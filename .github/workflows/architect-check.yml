@@ -23,11 +23,11 @@ jobs:
       
       - name: Generate architect report
         run: |
-          cat > docs/reports/architect/latest.md << 'EOF'
+          cat > docs/reports/architect/latest.md << EOF
 # Отчёт Архитектора
 
 ## Метаданные
-- **Дата и время проверки**: ${{ steps.datetime.outputs.datetime }} (UTC)
+- **Дата и время проверки**: $(date '+%Y-%m-%d %H:%M') (UTC)
 - **Окружение проверки**: GitHub Actions (ubuntu-latest)
 - **Запускающий workflow**: architect-check.yml (schedule)
 
@@ -92,7 +92,7 @@ jobs:
 - Совместимость с разными браузерами
 
 ---
-*Отчёт сгенерирован автоматически: ${{ steps.datetime.outputs.datetime }}*
+*Отчёт сгенерирован автоматически: $(date '+%Y-%m-%d %H:%M')*
 EOF
       
       - name: Save historical report
