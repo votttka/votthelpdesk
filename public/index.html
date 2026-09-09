@@ -1,312 +1,303 @@
-// Data and Application Logic
-const STORAGE_KEY = 'helpdesk_data_v1';
-let currentTicketId = null;
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HelpDesk Prototype</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f7fa; color: #333; }
+    .header { background: #2c3e50; color: white; padding: 1rem 2rem; display: flex; justify-content: space-between; align-items: center; }
+    .header h1 { font-size: 1.5rem; }
+    .role-selector { background: #34495e; border: none; color: white; padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer; }
+    .container { max-width: 1400px; margin: 0 auto; padding: 1rem; }
+    .dashboard { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 2rem; }
+    .stat-card { background: white; padding: 1.5rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); text-align: center; }
+    .stat-card h3 { color: #7f8c8d; font-size: 0.9rem; margin-bottom: 0.5rem; }
+    .stat-card .value { font-size: 2rem; font-weight: bold; color: #2c3e50; }
+    .tabs { display: flex; gap: 0.5rem; margin-bottom: 1rem; }
+    .tab { padding: 0.75rem 1.5rem; background: white; border: none; border-radius: 4px; cursor: pointer; font-size: 1rem; }
+    .tab.active { background: #3498db; color: white; }
+    .filters { background: white; padding: 1rem; border-radius: 8px; margin-bottom: 1rem; display: flex; gap: 1rem; flex-wrap: wrap; }
+    .filters select, .filters input { padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px; }
+    .tickets-table { width: 100%; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+    .tickets-table th, .tickets-table td { padding: 1rem; text-align: left; border-bottom: 1px solid #eee; }
+    .tickets-table th { background: #f8f9fa; font-weight: 600; }
+    .tickets-table tr:hover { background: #f8f9fa; cursor: pointer; }
+    .status { padding: 0.25rem 0.75rem; border-radius: 20px; font-size: 0.85rem; font-weight: 500; }
+    .status-new { background: #3498db; color: white; }
+    .status-in-progress { background: #f39c12; color: white; }
+    .status-waiting-client { background: #9b59b6; color: white; }
+    .status-waiting-partner { background: #e67e22; color: white; }
+    .status-resolved { background: #27ae60; color: white; }
+    .status-closed { background: #95a5a6; color: white; }
+    .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+    .modal { background: white; border-radius: 8px; width: 90%; max-width: 1000px; max-height: 90vh; overflow-y: auto; }
+    .modal-header { padding: 1.5rem; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; }
+    .modal-body { padding: 1.5rem; }
+    .modal-footer { padding: 1.5rem; border-top: 1px solid #eee; display: flex; gap: 1rem; justify-content: flex-end; }
+    .btn { padding: 0.75rem 1.5rem; border: none; border-radius: 4px; cursor: pointer; font-size: 1rem; }
+    .btn-primary { background: #3498db; color: white; }
+    .btn-success { background: #27ae60; color: white; }
+    .btn-secondary { background: #95a5a6; color: white; }
+    .form-group { margin-bottom: 1rem; }
+    .form-group label { display: block; margin-bottom: 0.5rem; font-weight: 500; }
+    .form-group input, .form-group select, .form-group textarea { width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem; }
+    .form-group textarea { min-height: 80px; resize: vertical; }
+    .ticket-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 2rem; }
+    .ticket-meta { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.5rem; }
+    .meta-item { background: #f8f9fa; padding: 1rem; border-radius: 4px; }
+    .meta-item label { font-size: 0.85rem; color: #7f8c8d; display: block; margin-bottom: 0.25rem; }
+    .meta-item value { font-weight: 600; }
+    .audit-log { background: #f8f9fa; padding: 1rem; border-radius: 4px; max-height: 300px; overflow-y: auto; }
+    .log-entry { padding: 0.5rem 0; border-bottom: 1px solid #eee; font-size: 0.9rem; }
+    .log-time { color: #7f8c8d; font-size: 0.85rem; }
+    .interactions { margin-top: 1.5rem; }
+    .interaction-list { max-height: 200px; overflow-y: auto; margin-bottom: 1rem; }
+    .interaction { background: #f8f9fa; padding: 0.75rem; border-radius: 4px; margin-bottom: 0.5rem; }
+    .hidden { display: none; }
+    .close-btn { background: none; border: none; font-size: 1.5rem; cursor: pointer; color: #7f8c8d; }
+    .create-btn { background: #27ae60; color: white; border: none; padding: 0.75rem 1.5rem; border-radius: 4px; cursor: pointer; font-size: 1rem; }
+    .integration-mock { background: #fff3cd; padding: 1rem; border-radius: 4px; margin-top: 1rem; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>HelpDesk Prototype</h1>
+    <select id="roleSelect" class="role-selector" onchange="changeRole()">
+      <option value="operator">Оператор</option>
+      <option value="engineer">Инженер</option>
+      <option value="lead">Лид</option>
+      <option value="auditor">Аудитор</option>
+      <option value="admin">Администратор</option>
+    </select>
+  </div>
+  <div class="container">
+    <div class="tabs">
+      <button class="tab active" onclick="showTab('dashboard')">Дашборд</button>
+      <button class="tab" onclick="showTab('tickets')">Заявки</button>
+      <button class="tab" onclick="showTab('integrations')">Интеграции</button>
+    </div>
+    <div id="dashboard-tab">
+      <div class="dashboard">
+        <div class="stat-card"><h3>Всего заявок</h3><div class="value" id="stat-total">0</div></div>
+        <div class="stat-card"><h3>В работе</h3><div class="value" id="stat-progress">0</div></div>
+        <div class="stat-card"><h3>Ожидание</h3><div class="value" id="stat-waiting">0</div></div>
+        <div class="stat-card"><h3>Решены</h3><div class="value" id="stat-resolved">0</div></div>
+        <div class="stat-card"><h3>Клиентские</h3><div class="value" id="stat-client">0</div></div>
+        <div class="stat-card"><h3>Внутренние</h3><div class="value" id="stat-internal">0</div></div>
+        <div class="stat-card"><h3>С паузой</h3><div class="value" id="stat-paused">0</div></div>
+        <div class="stat-card"><h3>Без типа/Другое</h3><div class="value" id="stat-other">0</div></div>
+      </div>
+    </div>
+    <div id="tickets-tab" class="hidden">
+      <div style="display:flex;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:1rem;">
+        <div class="filters" style="flex:1;min-width:300px;">
+          <select id="filter-status" onchange="renderTickets()"><option value="">Все статусы</option><option>Новая</option><option>В работе</option><option>Ожидание клиента</option><option>Ожидание смежника</option><option>Решена</option><option>Закрыта</option></select>
+          <select id="filter-type" onchange="renderTickets()"><option value="">Все типы</option><option>Инцидент</option><option>Запрос на обслуживание</option><option>Платная работа</option><option>Внутренняя задача</option><option>Другое</option></select>
+          <select id="filter-category" onchange="renderTickets()"><option value="">Все категории</option><option value="client">Клиентская</option><option value="internal">Внутренняя</option></select>
+          <input type="text" id="search-input" placeholder="Поиск..." oninput="renderTickets()">
+        </div>
+        <button class="create-btn" onclick="openCreateModal()">+ Создать заявку</button>
+      </div>
+      <table class="tickets-table">
+        <thead><tr><th>№</th><th>Тип</th><th>Контрагент</th><th>Описание</th><th>Статус</th><th>Линия</th><th>Исполнитель</th></tr></thead>
+        <tbody id="tickets-body"></tbody>
+      </table>
+    </div>
+    <div id="integrations-tab" class="hidden">
+      <h2>Заглушки интеграций</h2>
+      <div class="integration-mock"><h3>Телефония (эмуляция)</h3><p>Входящий звонок от +7 (XXX) XXX-XX-XX</p><button class="btn btn-secondary" onclick="alert('Эмуляция звонка')">Симулировать звонок</button></div>
+      <div class="integration-mock"><h3>УСП (эмуляция)</h3><p>Входящая заявка от госзаказчика №USP-001</p><button class="btn btn-secondary" onclick="alert('Эмуляция УСП')">Симулировать заявку</button></div>
+      <div class="integration-mock"><h3>Бухгалтерия (эмуляция)</h3><p>Списанные часы: 2.5 ч</p><button class="btn btn-secondary" onclick="alert('Эмуляция бухгалтерии')">Загрузить данные</button></div>
+      <div class="integration-mock"><h3>SSO (эмуляция)</h3><button class="btn btn-primary" onclick="alert('Эмуляция SSO')">Войти через SSO</button></div>
+    </div>
+  </div>
+  <div id="create-modal" class="modal-overlay hidden">
+    <div class="modal">
+      <div class="modal-header"><h2>Создать заявку</h2><button class="close-btn" onclick="closeCreateModal()">&times;</button></div>
+      <div class="modal-body">
+        <div class="form-group"><label>Категория *</label><select id="create-category"><option value="client">Клиентская</option><option value="internal">Внутренняя</option></select></div>
+        <div class="form-group"><label>Контрагент/Владелец *</label><input type="text" id="create-owner" required></div>
+        <div class="form-group"><label>Описание *</label><input type="text" id="create-description" required></div>
+        <div class="form-group"><label>Тип обращения *</label><select id="create-type" onchange="checkOtherType()"><option>Инцидент</option><option>Запрос на обслуживание</option><option>Платная работа</option><option>Внутренняя задача</option><option value="other">Другое</option></select></div>
+        <div class="form-group" id="other-type-comment" style="display:none;"><label>Комментарий к типу "Другое" *</label><textarea id="create-type-comment"></textarea></div>
+      </div>
+      <div class="modal-footer"><button class="btn btn-secondary" onclick="closeCreateModal()">Отмена</button><button class="btn btn-primary" onclick="createTicket()">Создать</button></div>
+    </div>
+  </div>
+  <div id="ticket-modal" class="modal-overlay hidden">
+    <div class="modal">
+      <div class="modal-header"><h2 id="ticket-title">Заявка №</h2><button class="close-btn" onclick="closeTicketModal()">&times;</button></div>
+      <div class="modal-body">
+        <div class="ticket-grid">
+          <div>
+            <div class="ticket-meta">
+              <div class="meta-item"><label>Категория</label><value id="detail-category"></value></div>
+              <div class="meta-item"><label>Тип</label><value id="detail-type"></value></div>
+              <div class="meta-item"><label>Контрагент</label><value id="detail-owner"></value></div>
+              <div class="meta-item"><label>Описание</label><value id="detail-description"></value></div>
+              <div class="meta-item"><label>Статус</label><value id="detail-status"></value></div>
+              <div class="meta-item"><label>Линия</label><value id="detail-line"></value></div>
+              <div class="meta-item"><label>Исполнитель</label><value id="detail-assignee"></value></div>
+              <div class="meta-item"><label>Дата создания</label><value id="detail-created"></value></div>
+            </div>
+            <div class="interactions"><h3>Взаимодействия</h3><div class="interaction-list" id="interaction-list"></div><div class="form-group"><label>Комментарий</label><textarea id="new-comment"></textarea><button class="btn btn-primary" style="margin-top:0.5rem" onclick="addComment()">Добавить</button></div></div>
+          </div>
+          <div>
+            <div class="form-group"><label>Сменить статус</label><select id="change-status" onchange="checkStatusRequirements()"><option>Новая</option><option>В работе</option><option>Ожидание клиента</option><option>Ожидание смежника</option><option>Решена</option><option>Закрыта</option></select></div>
+            <div class="form-group" id="pause-reason-group" style="display:none;"><label>Причина паузы *</label><textarea id="pause-reason"></textarea></div>
+            <div class="form-group" id="resolution-channel-group" style="display:none;"><label>Канал решения *</label><select id="resolution-channel"><option value="">Выберите</option><option>Удалённо</option><option>Телефон</option><option>Переписка</option><option>Выезд</option></select></div>
+            <button class="btn btn-success" style="width:100%;margin-bottom:1rem" onclick="updateStatus()">Применить статус</button>
+            <div class="form-group"><label>Исполнитель</label><select id="assign-executor"><option value="">Не назначен</option><option>Иванов И.И.</option><option>Петров П.П.</option><option>Сидоров С.С.</option></select><button class="btn btn-secondary" style="width:100%;margin-top:0.5rem" onclick="assignExecutor()">Назначить</button></div>
+            <div class="form-group"><label>Линия</label><select id="transfer-line"><option value="1">Линия 1</option><option value="2">Линия 2</option><option value="3">Линия 3</option></select><button class="btn btn-secondary" style="width:100%;margin-top:0.5rem" onclick="transferLine()">Передать</button></div>
+            <h3 style="margin-top:1.5rem">Аудит-лог</h3><div class="audit-log" id="audit-log"></div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer"><button class="btn btn-secondary" onclick="closeTicketModal()">Закрыть</button></div>
+    </div>
+  </div>
+  <script>
+    // Data storage
+    let tickets = JSON.parse(localStorage.getItem('helpdesk_tickets')) || [];
+    let currentTicketId = null;
 
-const initialData = {
-    tickets: [
-        {id:1,number:'HD-001',category:'client',contractor:'ООО "Технопарк"',title:'Не работает доступ к CRM',type:'incident',status:'new',assignee:'',line:'L1',created:new Date('2024-01-15T09:00').toISOString(),description:'Пользователь сообщает о невозможности подключения к системе CRM.',otherComment:'',channel:'',pauseReason:'',interactions:[],audit:[{time:new Date('2024-01-15T09:00').toISOString(),event:'created',details:'Заявка создана'}]},
-        {id:2,number:'HD-002',category:'internal',contractor:'',title:'Обновление сервера БД',type:'service_request',status:'in_progress',assignee:'Петров П.П.',line:'L2',created:new Date('2024-01-15T10:30').toISOString(),description:'Требуется обновление СУБД на тестовом сервере.',otherComment:'',channel:'',pauseReason:'',interactions:[{author:'Петров П.П.',time:new Date('2024-01-15T11:00').toISOString(),text:'Начал подготовку'}],audit:[{time:new Date('2024-01-15T10:30').toISOString(),event:'created',details:'Заявка создана'},{time:new Date('2024-01-15T10:35').toISOString(),event:'status_changed',details:'Статус: В работе'},{time:new Date('2024-01-15T10:36').toISOString(),event:'assigned',details:'Исполнитель: Петров П.П.'}]},
-        {id:3,number:'HD-003',category:'client',contractor:'АО "СтройМаш"',title:'Настройка рабочего места',type:'paid_work',status:'waiting_client',assignee:'Иванов И.И.',line:'L1',created:new Date('2024-01-14T14:00').toISOString(),description:'Настройка АРМ для нового сотрудника.',otherComment:'',channel:'',pauseReason:'Ожидаем подтверждение от заказчика',interactions:[],audit:[{time:new Date('2024-01-14T14:00').toISOString(),event:'created',details:'Заявка создана'},{time:new Date('2024-01-14T16:00').toISOString(),event:'paused',details:'Пауза: Ожидаем подтверждение'}]},
-        {id:4,number:'HD-004',category:'client',contractor:'ИП Смирнов',title:'Консультация по лицензированию',type:'other',status:'resolved',assignee:'Сидоров С.С.',line:'L1',created:new Date('2024-01-13T11:00').toISOString(),description:'Консультация по выбору лицензии.',otherComment:'Специфический вопрос лицензирования',channel:'phone',pauseReason:'',interactions:[],audit:[{time:new Date('2024-01-13T11:00').toISOString(),event:'created',details:'Заявка создана'},{time:new Date('2024-01-13T12:00').toISOString(),event:'status_changed',details:'Статус: Решена'},{time:new Date('2024-01-13T12:00').toISOString(),event:'channel_set',details:'Канал: Телефон'}]},
-        {id:5,number:'HD-005',category:'internal',contractor:'',title:'Мониторинг бэкапов',type:'internal_task',status:'closed',assignee:'Кузнецов К.К.',line:'L3',created:new Date('2024-01-10T08:00').toISOString(),description:'Ежемесячная проверка системы бэкапа.',otherComment:'',channel:'remote',pauseReason:'',interactions:[],audit:[{time:new Date('2024-01-10T08:00').toISOString(),event:'created',details:'Заявка создана'},{time:new Date('2024-01-12T17:00').toISOString(),event:'status_changed',details:'Статус: Закрыта'}]}
-    ],
-    settings: {currentRole: 'operator'}
-};
-
-function loadData() {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored) return JSON.parse(stored);
-    saveData(initialData);
-    return initialData;
-}
-
-function saveData(data) {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-}
-
-let appData = loadData();
-
-function genNumber() {
-    const nextId = Math.max(...appData.tickets.map(t => t.id), 0) + 1;
-    return 'HD-' + String(nextId).padStart(3, '0');
-}
-
-function formatDate(iso) {
-    const d = new Date(iso);
-    return d.toLocaleDateString('ru-RU') + ' ' + d.toLocaleTimeString('ru-RU', {hour:'2-digit',minute:'2-digit'});
-}
-
-function statusLabel(s) {
-    return {new:'Новая',in_progress:'В работе',waiting_client:'Ожидание клиента',waiting_partner:'Ожидание смежника',resolved:'Решена',closed:'Закрыта'}[s] || s;
-}
-
-function statusClass(s) {
-    return {new:'status-new',in_progress:'status-progress',waiting_client:'status-waiting-client',waiting_partner:'status-waiting-partner',resolved:'status-resolved',closed:'status-closed'}[s] || '';
-}
-
-function typeLabel(t) {
-    return {incident:'Инцидент',service_request:'Запрос на обслуживание',paid_work:'Платная работа',internal_task:'Внутренняя задача',other:'Другое'}[t] || t;
-}
-
-function categoryLabel(c) { return c === 'client' ? 'Клиентская' : 'Внутренняя'; }
-
-// Navigation
-document.querySelectorAll('.nav-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-        document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        const view = btn.dataset.view;
-        document.querySelectorAll('.view-section').forEach(v => v.classList.remove('active'));
-        document.getElementById(view + 'View').classList.add('active');
-        if (view === 'dashboard') updateDashboard();
-        if (view === 'tickets') renderTickets();
-    });
-});
-
-// Role
-document.getElementById('roleSelector').addEventListener('change', e => {
-    appData.settings.currentRole = e.target.value;
-    saveData(appData);
-    document.getElementById('currentRole').textContent = 'Роль: ' + {operator:'Оператор',engineer:'Инженер',lead:'Лид поддержки',auditor:'Аудитор',admin:'Администратор'}[e.target.value];
-});
-
-// Dashboard
-function updateDashboard() {
-    const t = appData.tickets;
-    document.getElementById('statNew').textContent = t.filter(x => x.status === 'new').length;
-    document.getElementById('statProgress').textContent = t.filter(x => x.status === 'in_progress').length;
-    document.getElementById('statWaiting').textContent = t.filter(x => ['waiting_client','waiting_partner'].includes(x.status)).length;
-    document.getElementById('statResolved').textContent = t.filter(x => x.status === 'resolved').length;
-    document.getElementById('statClosed').textContent = t.filter(x => x.status === 'closed').length;
-    document.getElementById('statClient').textContent = t.filter(x => x.category === 'client').length;
-    document.getElementById('statInternal').textContent = t.filter(x => x.category === 'internal').length;
-    document.getElementById('statPaused').textContent = t.filter(x => x.pauseReason).length;
-}
-
-// Tickets
-function renderTickets() {
-    const tbody = document.getElementById('ticketsTableBody');
-    const empty = document.getElementById('ticketsEmpty');
-    let filtered = appData.tickets;
-    const search = document.getElementById('searchInput').value.toLowerCase();
-    const statusF = document.getElementById('filterStatus').value;
-    const typeF = document.getElementById('filterType').value;
-    const catF = document.getElementById('filterCategory').value;
-    
-    if (search) filtered = filtered.filter(t => t.number.toLowerCase().includes(search) || t.title.toLowerCase().includes(search) || (t.contractor && t.contractor.toLowerCase().includes(search)));
-    if (statusF) filtered = filtered.filter(t => t.status === statusF);
-    if (typeF) filtered = filtered.filter(t => t.type === typeF);
-    if (catF) filtered = filtered.filter(t => t.category === catF);
-    
-    if (filtered.length === 0) {
-        tbody.innerHTML = '';
-        empty.style.display = 'block';
-        return;
+    // Initialize demo data if empty
+    if (tickets.length === 0) {
+      tickets = [
+        { id: 1, category: 'client', owner: 'ООО Ромашка', description: 'Не работает принтер', type: 'Инцидент', status: 'В работе', line: '1', assignee: 'Иванов И.И.', created: '2026-09-09 10:00', audit: [{ time: '2026-09-09 10:00', event: 'Создана' }], interactions: [] },
+        { id: 2, category: 'internal', owner: 'IT отдел', description: 'Обновление ПО', type: 'Запрос на обслуживание', status: 'Новая', line: '1', assignee: '', created: '2026-09-09 11:00', audit: [{ time: '2026-09-09 11:00', event: 'Создана' }], interactions: [] },
+        { id: 3, category: 'client', owner: 'АО Технопарк', description: 'Ошибка в 1С', type: 'Платная работа', status: 'Ожидание клиента', statusPaused: true, pauseReason: 'Ждем ответ от клиента', line: '2', assignee: 'Петров П.П.', created: '2026-09-09 09:00', audit: [{ time: '2026-09-09 09:00', event: 'Создана' }, { time: '2026-09-09 12:00', event: 'Статус: Ожидание клиента (Причина: Ждем ответ от клиента)' }], interactions: [{ time: '2026-09-09 12:00', text: 'Звонили клиенту' }] },
+        { id: 4, category: 'client', owner: 'ИП Смирнов', description: 'Настройка сервера', type: 'Внутренняя задача', status: 'Решена', resolutionChannel: 'Удалённо', line: '2', assignee: 'Сидоров С.С.', created: '2026-09-08 14:00', audit: [{ time: '2026-09-08 14:00', event: 'Создана' }, { time: '2026-09-09 08:00', event: 'Статус: Решена (Канал: Удалённо)' }], interactions: [] },
+        { id: 5, category: 'internal', owner: 'Бухгалтерия', description: 'Консультация', type: 'Другое', typeComment: 'Вопрос по лицензированию', status: 'Закрыта', line: '1', assignee: 'Иванов И.И.', created: '2026-09-07 16:00', audit: [{ time: '2026-09-07 16:00', event: 'Создана' }], interactions: [] }
+      ];
+      saveTickets();
     }
-    empty.style.display = 'none';
-    tbody.innerHTML = filtered.map(t => '<tr onclick="openTicket(' + t.id + ')"><td>' + t.number + '</td><td>' + t.title + '</td><td><span class="type-badge">' + typeLabel(t.type) + '</span></td><td>' + categoryLabel(t.category) + '</td><td><span class="status-badge ' + statusClass(t.status) + '">' + statusLabel(t.status) + '</span></td><td>' + (t.assignee || 'Не назначен') + '</td><td>' + formatDate(t.created) + '</td></tr>').join('');
-}
 
-function resetFilters() {
-    document.getElementById('searchInput').value = '';
-    document.getElementById('filterStatus').value = '';
-    document.getElementById('filterType').value = '';
-    document.getElementById('filterCategory').value = '';
-    renderTickets();
-}
-
-// Create Ticket
-function toggleContractor() {
-    document.getElementById('contractorGroup').style.display = document.getElementById('ticketCategory').value === 'client' ? 'block' : 'none';
-}
-
-function toggleOtherComment() {
-    document.getElementById('otherCommentGroup').style.display = document.getElementById('ticketType').value === 'other' ? 'block' : 'none';
-}
-
-document.getElementById('createTicketForm').addEventListener('submit', e => {
-    e.preventDefault();
-    const cat = document.getElementById('ticketCategory').value;
-    const title = document.getElementById('ticketTitle').value.trim();
-    const type = document.getElementById('ticketType').value;
-    const otherC = document.getElementById('ticketOtherComment').value.trim();
-    const desc = document.getElementById('ticketDescription').value.trim();
-    
-    if (type === 'other' && !otherC) { alert('Укажите комментарий для типа "Другое"'); return; }
-    
-    const ticket = {
-        id: Math.max(...appData.tickets.map(t=>t.id),0)+1,
-        number: genNumber(),
-        category: cat,
-        contractor: cat === 'client' ? document.getElementById('ticketContractor').value.trim() : '',
-        title, type, otherComment: otherC,
-        status: 'new', assignee: '', line: document.getElementById('ticketLine').value,
-        created: new Date().toISOString(),
-        description: desc, channel: '', pauseReason: '',
-        interactions: [],
-        audit: [{time: new Date().toISOString(), event:'created', details:'Заявка создана (' + categoryLabel(cat) + ', ' + typeLabel(type) + ')'}]
-    };
-    appData.tickets.push(ticket);
-    saveData(appData);
-    document.getElementById('createTicketForm').reset();
-    document.getElementById('contractorGroup').style.display = 'none';
-    document.getElementById('otherCommentGroup').style.display = 'none';
-    alert('Заявка создана!');
-    document.querySelector('[data-view="tickets"]').click();
-});
-
-// Modal functions
-function openTicket(id) {
-    currentTicketId = id;
-    const t = appData.tickets.find(x => x.id === id);
-    if (!t) return;
-    
-    document.getElementById('modalTitle').textContent = 'Заявка ' + t.number;
-    document.getElementById('ticketInfo').innerHTML = 
-        '<div class="info-row"><span class="info-label">Номер:</span><span class="info-value">'+t.number+'</span></div>'+
-        '<div class="info-row"><span class="info-label">Категория:</span><span class="info-value">'+categoryLabel(t.category)+'</span></div>'+
-        '<div class="info-row"><span class="info-label">Контрагент:</span><span class="info-value">'+(t.contractor||'-')+'</span></div>'+
-        '<div class="info-row"><span class="info-label">Тип:</span><span class="info-value">'+typeLabel(t.type)+(t.otherComment?' ('+t.otherComment+')':'')+'</span></div>'+
-        '<div class="info-row"><span class="info-label">Статус:</span><span class="info-value"><span class="status-badge '+statusClass(t.status)+'">'+statusLabel(t.status)+'</span></span></div>'+
-        '<div class="info-row"><span class="info-label">Исполнитель:</span><span class="info-value">'+(t.assignee||'Не назначен')+'</span></div>'+
-        '<div class="info-row"><span class="info-label">Линия:</span><span class="info-value">'+t.line+'</span></div>'+
-        '<div class="info-row"><span class="info-label">Создана:</span><span class="info-value">'+formatDate(t.created)+'</span></div>'+
-        '<div class="info-row"><span class="info-label">Описание:</span><span class="info-value">'+t.description+'</span></div>';
-    
-    renderInteractions(t);
-    renderAudit(t);
-    document.getElementById('statusSelect').value = t.status;
-    document.getElementById('assigneeSelect').value = t.assignee || '';
-    document.getElementById('lineSelect').value = t.line;
-    updateActionBlocks();
-    document.getElementById('ticketModal').classList.add('active');
-}
-
-function closeModal() {
-    document.getElementById('ticketModal').classList.remove('active');
-    currentTicketId = null;
-}
-
-function switchTab(btn) {
-    document.querySelectorAll('.tab').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-    document.getElementById(btn.dataset.tab + 'Tab').classList.add('active');
-}
-
-function renderInteractions(t) {
-    const list = document.getElementById('interactionsList');
-    if (t.interactions.length === 0) { list.innerHTML = '<p style="color:#999;text-align:center;padding:1rem;">Нет взаимодействий</p>'; return; }
-    list.innerHTML = t.interactions.map(i => '<div class="interaction"><div class="interaction-author">'+i.author+'</div><div class="interaction-time">'+formatDate(i.time)+'</div><div class="interaction-text">'+i.text+'</div></div>').join('');
-}
-
-function renderAudit(t) {
-    const log = document.getElementById('auditLog');
-    if (t.audit.length === 0) { log.innerHTML = '<p style="color:#999;text-align:center;padding:1rem;">Нет записей</p>'; return; }
-    log.innerHTML = t.audit.map(e => '<div class="log-entry"><div class="log-time">'+formatDate(e.time)+'</div><div class="log-event">'+e.event+'</div><div class="log-details">'+e.details+'</div></div>').join('');
-}
-
-function updateActionBlocks() {
-    const s = document.getElementById('statusSelect').value;
-    document.getElementById('pauseBlock').classList.toggle('active', ['waiting_client','waiting_partner'].includes(s));
-    document.getElementById('channelBlock').style.display = s === 'resolved' ? 'block' : 'none';
-}
-
-function addInteraction() {
-    const text = document.getElementById('interactionText').value.trim();
-    if (!text) return;
-    const t = appData.tickets.find(x => x.id === currentTicketId);
-    if (!t) return;
-    t.interactions.push({author: {operator:'Оператор',engineer:'Инженер',lead:'Лид поддержки',auditor:'Аудитор',admin:'Администратор'}[appData.settings.currentRole], time: new Date().toISOString(), text});
-    t.audit.push({time: new Date().toISOString(), event:'comment_added', details:'Комментарий: '+text.substring(0,50)});
-    saveData(appData);
-    document.getElementById('interactionText').value = '';
-    renderInteractions(t);
-    renderAudit(t);
-}
-
-function changeStatus() {
-    const t = appData.tickets.find(x => x.id === currentTicketId);
-    if (!t) return;
-    const newStatus = document.getElementById('statusSelect').value;
-    
-    if (['waiting_client','waiting_partner'].includes(newStatus)) {
-        const reason = document.getElementById('pauseReason').value.trim();
-        if (!reason) { alert('Укажите причину паузы!'); return; }
+    function saveTickets() { localStorage.setItem('helpdesk_tickets', JSON.stringify(tickets)); renderDashboard(); renderTickets(); }
+    function changeRole() { alert('Роль изменена: ' + document.getElementById('roleSelect').options[document.getElementById('roleSelect').selectedIndex].text); }
+    function showTab(tab) { document.querySelectorAll('.tab').forEach(t => t.classList.remove('active')); document.querySelectorAll('[id$="-tab"]').forEach(t => t.classList.add('hidden')); document.querySelector('.tab[onclick*="' + tab + '"]').classList.add('active'); document.getElementById(tab + '-tab').classList.remove('hidden'); }
+    function checkOtherType() { document.getElementById('other-type-comment').style.display = document.getElementById('create-type').value === 'other' ? 'block' : 'none'; }
+    function openCreateModal() { document.getElementById('create-modal').classList.remove('hidden'); }
+    function closeCreateModal() { document.getElementById('create-modal').classList.add('hidden'); document.getElementById('create-owner').value = ''; document.getElementById('create-description').value = ''; document.getElementById('create-type-comment').value = ''; }
+    function createTicket() {
+      const owner = document.getElementById('create-owner').value.trim();
+      const desc = document.getElementById('create-description').value.trim();
+      const type = document.getElementById('create-type').value;
+      const category = document.getElementById('create-category').value;
+      if (!owner || !desc) { alert('Заполните обязательные поля'); return; }
+      if (type === 'other' && !document.getElementById('create-type-comment').value.trim()) { alert('Укажите комментарий к типу Другое'); return; }
+      const ticket = { id: Date.now(), category, owner, description: desc, type: type === 'other' ? 'Другое' : type, typeComment: type === 'other' ? document.getElementById('create-type-comment').value.trim() : '', status: 'Новая', line: '1', assignee: '', created: new Date().toLocaleString('ru-RU'), audit: [{ time: new Date().toLocaleString('ru-RU'), event: 'Создана' }], interactions: [] };
+      tickets.push(ticket);
+      saveTickets();
+      closeCreateModal();
+      alert('Заявка №' + ticket.id + ' создана');
+    }
+    function renderDashboard() {
+      document.getElementById('stat-total').textContent = tickets.length;
+      document.getElementById('stat-progress').textContent = tickets.filter(t => t.status === 'В работе').length;
+      document.getElementById('stat-waiting').textContent = tickets.filter(t => t.status.includes('Ожидание')).length;
+      document.getElementById('stat-resolved').textContent = tickets.filter(t => t.status === 'Решена' || t.status === 'Закрыта').length;
+      document.getElementById('stat-client').textContent = tickets.filter(t => t.category === 'client').length;
+      document.getElementById('stat-internal').textContent = tickets.filter(t => t.category === 'internal').length;
+      document.getElementById('stat-paused').textContent = tickets.filter(t => t.statusPaused).length;
+      document.getElementById('stat-other').textContent = tickets.filter(t => t.type === 'Другое' || !t.type).length;
+    }
+    function renderTickets() {
+      const filterStatus = document.getElementById('filter-status').value;
+      const filterType = document.getElementById('filter-type').value;
+      const filterCategory = document.getElementById('filter-category').value;
+      const search = document.getElementById('search-input').value.toLowerCase();
+      const filtered = tickets.filter(t => {
+        if (filterStatus && t.status !== filterStatus) return false;
+        if (filterType && t.type !== filterType) return false;
+        if (filterCategory && t.category !== filterCategory) return false;
+        if (search && !t.id.toString().includes(search) && !t.owner.toLowerCase().includes(search) && !t.description.toLowerCase().includes(search)) return false;
+        return true;
+      });
+      document.getElementById('tickets-body').innerHTML = filtered.map(t => '<tr onclick="openTicket(' + t.id + ')"><td>' + t.id + '</td><td><span class="type-badge">' + t.type + '</span></td><td>' + t.owner + '</td><td>' + t.description + '</td><td><span class="status status-' + t.status.toLowerCase().replace(/ /g, '-') + '">' + t.status + '</span></td><td>' + t.line + '</td><td>' + (t.assignee || '-') + '</td></tr>').join('');
+    }
+    function openTicket(id) {
+      currentTicketId = id;
+      const t = tickets.find(x => x.id === id);
+      if (!t) return;
+      document.getElementById('ticket-title').textContent = 'Заявка №' + t.id;
+      document.getElementById('detail-category').textContent = t.category === 'client' ? 'Клиентская' : 'Внутренняя';
+      document.getElementById('detail-type').textContent = t.type + (t.typeComment ? ' (' + t.typeComment + ')' : '');
+      document.getElementById('detail-owner').textContent = t.owner;
+      document.getElementById('detail-description').textContent = t.description;
+      document.getElementById('detail-status').textContent = t.status;
+      document.getElementById('detail-line').textContent = t.line;
+      document.getElementById('detail-assignee').textContent = t.assignee || 'Не назначен';
+      document.getElementById('detail-created').textContent = t.created;
+      document.getElementById('interaction-list').innerHTML = t.interactions.map(i => '<div class="interaction"><small>' + i.time + '</small><p>' + i.text + '</p></div>').join('') || '<p>Нет взаимодействий</p>';
+      document.getElementById('audit-log').innerHTML = t.audit.map(a => '<div class="log-entry"><span class="log-time">' + a.time + '</span> - ' + a.event + '</div>').join('');
+      document.getElementById('change-status').value = t.status;
+      document.getElementById('ticket-modal').classList.remove('hidden');
+      checkStatusRequirements();
+    }
+    function closeTicketModal() { document.getElementById('ticket-modal').classList.add('hidden'); currentTicketId = null; }
+    function checkStatusRequirements() {
+      const status = document.getElementById('change-status').value;
+      document.getElementById('pause-reason-group').style.display = status.includes('Ожидание') ? 'block' : 'none';
+      document.getElementById('resolution-channel-group').style.display = status === 'Решена' ? 'block' : 'none';
+    }
+    function updateStatus() {
+      const t = tickets.find(x => x.id === currentTicketId);
+      if (!t) return;
+      const newStatus = document.getElementById('change-status').value;
+      if (newStatus.includes('Ожидание')) {
+        const reason = document.getElementById('pause-reason').value.trim();
+        if (!reason) { alert('Укажите причину паузы'); return; }
+        t.statusPaused = true;
         t.pauseReason = reason;
-    } else { t.pauseReason = ''; }
-    
-    if (newStatus === 'resolved') {
-        const ch = document.getElementById('channelSelect').value;
-        if (!ch) { alert('Выберите канал решения!'); return; }
-        t.channel = ch;
+        t.audit.push({ time: new Date().toLocaleString('ru-RU'), event: 'Статус: ' + newStatus + ' (Причина: ' + reason + ')' });
+      } else if (newStatus === 'Решена') {
+        const channel = document.getElementById('resolution-channel').value;
+        if (!channel) { alert('Укажите канал решения'); return; }
+        t.resolutionChannel = channel;
+        t.audit.push({ time: new Date().toLocaleString('ru-RU'), event: 'Статус: ' + newStatus + ' (Канал: ' + channel + ')' });
+      } else {
+        t.statusPaused = false;
+        t.audit.push({ time: new Date().toLocaleString('ru-RU'), event: 'Статус: ' + newStatus });
+      }
+      t.status = newStatus;
+      saveTickets();
+      openTicket(currentTicketId);
+      alert('Статус обновлен');
     }
-    
-    const old = t.status;
-    t.status = newStatus;
-    t.audit.push({time: new Date().toISOString(), event:'status_changed', details:'Статус: '+statusLabel(old)+' → '+statusLabel(newStatus)});
-    if (t.pauseReason) t.audit.push({time: new Date().toISOString(), event:'paused', details:'Пауза: '+t.pauseReason});
-    if (t.channel && newStatus==='resolved') {
-        const chNames = {remote:'Удалённо',phone:'Телефон',chat:'Переписка',onsite:'Выезд'};
-        t.audit.push({time: new Date().toISOString(), event:'channel_set', details:'Канал: '+chNames[t.channel]});
+    function addComment() {
+      const t = tickets.find(x => x.id === currentTicketId);
+      if (!t) return;
+      const text = document.getElementById('new-comment').value.trim();
+      if (!text) return;
+      t.interactions.push({ time: new Date().toLocaleString('ru-RU'), text });
+      t.audit.push({ time: new Date().toLocaleString('ru-RU'), event: 'Комментарий добавлен' });
+      saveTickets();
+      document.getElementById('new-comment').value = '';
+      openTicket(currentTicketId);
     }
-    saveData(appData);
-    openTicket(currentTicketId);
-    alert('Статус изменён!');
-}
-
-function assignExecutor() {
-    const t = appData.tickets.find(x => x.id === currentTicketId);
-    if (!t) return;
-    const a = document.getElementById('assigneeSelect').value;
-    t.assignee = a;
-    t.audit.push({time: new Date().toISOString(), event:'assigned', details: a ? 'Исполнитель: '+a : 'Исполнитель снят'});
-    saveData(appData);
-    openTicket(currentTicketId);
-}
-
-function transferLine() {
-    const t = appData.tickets.find(x => x.id === currentTicketId);
-    if (!t) return;
-    const comment = document.getElementById('transferComment').value.trim();
-    if (!comment) { alert('Комментарий обязателен!'); return; }
-    const oldLine = t.line;
-    t.line = document.getElementById('lineSelect').value;
-    t.audit.push({time: new Date().toISOString(), event:'line_transferred', details:'Передано: '+oldLine+' → '+t.line+'. Комментарий: '+comment});
-    saveData(appData);
-    openTicket(currentTicketId);
-}
-
-// Integrations
-function showResult(data) {
-    document.getElementById('integrationResult').style.display = 'block';
-    document.getElementById('integrationResultContent').textContent = JSON.stringify(data, null, 2);
-}
-
-function simTelephony() {
-    showResult({call_id:'CALL-'+Date.now(),direction:'incoming',phone:'+7 (999) 000-00-00',client:'Иванов И.И. (синтетический)',duration:'00:03:45',recording:'[MOCK]',timestamp:new Date().toISOString()});
-}
-
-function simUSP() {
-    showResult({usp_id:'USP-2024-00123',customer:'ФКУ "Центр" (синтетический)',contract:'44-ФЗ №000000 (синтетический)',subject:'Запрос услуги',priority:'high',deadline:new Date(Date.now()+86400000).toISOString()});
-}
-
-function simAccounting() {
-    showResult({period:'Январь 2024',total_hours:156,billable:89,non_billable:67,tickets:45,avg_time:'2.1ч',note:'Данные синтетические'});
-}
-
-function simSSO() {
-    showResult({provider:'Mock SSO',user_id:'USR-001',username:'demo_user',email:'demo@example.com',roles:['operator','engineer'],authenticated:new Date().toISOString(),note:'Эмуляция'});
-}
-
-function simAnalytics() {
-    showResult({export_type:'events_json',generated:new Date().toISOString(),events_count:appData.tickets.reduce((s,t)=>s+t.audit.length,0),sample:appData.tickets.slice(0,2).map(t=>({number:t.number,events:t.audit.length}))});
-}
-
-function simTracker() {
-    showResult({tracker:'JIRA Mock',issue_id:'HELP-'+Math.floor(Math.random()*1000),summary:'HelpDesk task',created:new Date().toISOString(),url:'https://jira.mock/browse/HELP-XXX',note:'Эмуляция'});
-}
-
-// Init
-updateDashboard();
+    function assignExecutor() {
+      const t = tickets.find(x => x.id === currentTicketId);
+      if (!t) return;
+      const assignee = document.getElementById('assign-executor').value;
+      t.assignee = assignee;
+      t.audit.push({ time: new Date().toLocaleString('ru-RU'), event: 'Исполнитель: ' + (assignee || 'Не назначен') });
+      saveTickets();
+      openTicket(currentTicketId);
+    }
+    function transferLine() {
+      const t = tickets.find(x => x.id === currentTicketId);
+      if (!t) return;
+      const comment = prompt('Введите комментарий к передаче (обязательно):');
+      if (!comment) { alert('Передача без комментария запрещена'); return; }
+      t.line = document.getElementById('transfer-line').value;
+      t.audit.push({ time: new Date().toLocaleString('ru-RU'), event: 'Передана на линию ' + t.line + ' (Комментарий: ' + comment + ')' });
+      saveTickets();
+      openTicket(currentTicketId);
+    }
+    // Init
+    renderDashboard();
+    renderTickets();
 </script></body></html>
