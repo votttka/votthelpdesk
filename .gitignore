@@ -17,9 +17,6 @@ dist/
 .vscode/
 .idea/
 
-# Package lock
-package-lock.json
-
 # Temporary files
 *.tmp
 *.swp
