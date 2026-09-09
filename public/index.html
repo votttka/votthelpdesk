@@ -1,0 +1,312 @@
+// Data and Application Logic
+const STORAGE_KEY = 'helpdesk_data_v1';
+let currentTicketId = null;
+
+const initialData = {
+    tickets: [
+        {id:1,number:'HD-001',category:'client',contractor:'ООО "Технопарк"',title:'Не работает доступ к CRM',type:'incident',status:'new',assignee:'',line:'L1',created:new Date('2024-01-15T09:00').toISOString(),description:'Пользователь сообщает о невозможности подключения к системе CRM.',otherComment:'',channel:'',pauseReason:'',interactions:[],audit:[{time:new Date('2024-01-15T09:00').toISOString(),event:'created',details:'Заявка создана'}]},
+        {id:2,number:'HD-002',category:'internal',contractor:'',title:'Обновление сервера БД',type:'service_request',status:'in_progress',assignee:'Петров П.П.',line:'L2',created:new Date('2024-01-15T10:30').toISOString(),description:'Требуется обновление СУБД на тестовом сервере.',otherComment:'',channel:'',pauseReason:'',interactions:[{author:'Петров П.П.',time:new Date('2024-01-15T11:00').toISOString(),text:'Начал подготовку'}],audit:[{time:new Date('2024-01-15T10:30').toISOString(),event:'created',details:'Заявка создана'},{time:new Date('2024-01-15T10:35').toISOString(),event:'status_changed',details:'Статус: В работе'},{time:new Date('2024-01-15T10:36').toISOString(),event:'assigned',details:'Исполнитель: Петров П.П.'}]},
+        {id:3,number:'HD-003',category:'client',contractor:'АО "СтройМаш"',title:'Настройка рабочего места',type:'paid_work',status:'waiting_client',assignee:'Иванов И.И.',line:'L1',created:new Date('2024-01-14T14:00').toISOString(),description:'Настройка АРМ для нового сотрудника.',otherComment:'',channel:'',pauseReason:'Ожидаем подтверждение от заказчика',interactions:[],audit:[{time:new Date('2024-01-14T14:00').toISOString(),event:'created',details:'Заявка создана'},{time:new Date('2024-01-14T16:00').toISOString(),event:'paused',details:'Пауза: Ожидаем подтверждение'}]},
+        {id:4,number:'HD-004',category:'client',contractor:'ИП Смирнов',title:'Консультация по лицензированию',type:'other',status:'resolved',assignee:'Сидоров С.С.',line:'L1',created:new Date('2024-01-13T11:00').toISOString(),description:'Консультация по выбору лицензии.',otherComment:'Специфический вопрос лицензирования',channel:'phone',pauseReason:'',interactions:[],audit:[{time:new Date('2024-01-13T11:00').toISOString(),event:'created',details:'Заявка создана'},{time:new Date('2024-01-13T12:00').toISOString(),event:'status_changed',details:'Статус: Решена'},{time:new Date('2024-01-13T12:00').toISOString(),event:'channel_set',details:'Канал: Телефон'}]},
+        {id:5,number:'HD-005',category:'internal',contractor:'',title:'Мониторинг бэкапов',type:'internal_task',status:'closed',assignee:'Кузнецов К.К.',line:'L3',created:new Date('2024-01-10T08:00').toISOString(),description:'Ежемесячная проверка системы бэкапа.',otherComment:'',channel:'remote',pauseReason:'',interactions:[],audit:[{time:new Date('2024-01-10T08:00').toISOString(),event:'created',details:'Заявка создана'},{time:new Date('2024-01-12T17:00').toISOString(),event:'status_changed',details:'Статус: Закрыта'}]}
+    ],
+    settings: {currentRole: 'operator'}
+};
+
+function loadData() {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (stored) return JSON.parse(stored);
+    saveData(initialData);
+    return initialData;
+}
+
+function saveData(data) {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+}
+
+let appData = loadData();
+
+function genNumber() {
+    const nextId = Math.max(...appData.tickets.map(t => t.id), 0) + 1;
+    return 'HD-' + String(nextId).padStart(3, '0');
+}
+
+function formatDate(iso) {
+    const d = new Date(iso);
+    return d.toLocaleDateString('ru-RU') + ' ' + d.toLocaleTimeString('ru-RU', {hour:'2-digit',minute:'2-digit'});
+}
+
+function statusLabel(s) {
+    return {new:'Новая',in_progress:'В работе',waiting_client:'Ожидание клиента',waiting_partner:'Ожидание смежника',resolved:'Решена',closed:'Закрыта'}[s] || s;
+}
+
+function statusClass(s) {
+    return {new:'status-new',in_progress:'status-progress',waiting_client:'status-waiting-client',waiting_partner:'status-waiting-partner',resolved:'status-resolved',closed:'status-closed'}[s] || '';
+}
+
+function typeLabel(t) {
+    return {incident:'Инцидент',service_request:'Запрос на обслуживание',paid_work:'Платная работа',internal_task:'Внутренняя задача',other:'Другое'}[t] || t;
+}
+
+function categoryLabel(c) { return c === 'client' ? 'Клиентская' : 'Внутренняя'; }
+
+// Navigation
+document.querySelectorAll('.nav-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        const view = btn.dataset.view;
+        document.querySelectorAll('.view-section').forEach(v => v.classList.remove('active'));
+        document.getElementById(view + 'View').classList.add('active');
+        if (view === 'dashboard') updateDashboard();
+        if (view === 'tickets') renderTickets();
+    });
+});
+
+// Role
+document.getElementById('roleSelector').addEventListener('change', e => {
+    appData.settings.currentRole = e.target.value;
+    saveData(appData);
+    document.getElementById('currentRole').textContent = 'Роль: ' + {operator:'Оператор',engineer:'Инженер',lead:'Лид поддержки',auditor:'Аудитор',admin:'Администратор'}[e.target.value];
+});
+
+// Dashboard
+function updateDashboard() {
+    const t = appData.tickets;
+    document.getElementById('statNew').textContent = t.filter(x => x.status === 'new').length;
+    document.getElementById('statProgress').textContent = t.filter(x => x.status === 'in_progress').length;
+    document.getElementById('statWaiting').textContent = t.filter(x => ['waiting_client','waiting_partner'].includes(x.status)).length;
+    document.getElementById('statResolved').textContent = t.filter(x => x.status === 'resolved').length;
+    document.getElementById('statClosed').textContent = t.filter(x => x.status === 'closed').length;
+    document.getElementById('statClient').textContent = t.filter(x => x.category === 'client').length;
+    document.getElementById('statInternal').textContent = t.filter(x => x.category === 'internal').length;
+    document.getElementById('statPaused').textContent = t.filter(x => x.pauseReason).length;
+}
+
+// Tickets
+function renderTickets() {
+    const tbody = document.getElementById('ticketsTableBody');
+    const empty = document.getElementById('ticketsEmpty');
+    let filtered = appData.tickets;
+    const search = document.getElementById('searchInput').value.toLowerCase();
+    const statusF = document.getElementById('filterStatus').value;
+    const typeF = document.getElementById('filterType').value;
+    const catF = document.getElementById('filterCategory').value;
+    
+    if (search) filtered = filtered.filter(t => t.number.toLowerCase().includes(search) || t.title.toLowerCase().includes(search) || (t.contractor && t.contractor.toLowerCase().includes(search)));
+    if (statusF) filtered = filtered.filter(t => t.status === statusF);
+    if (typeF) filtered = filtered.filter(t => t.type === typeF);
+    if (catF) filtered = filtered.filter(t => t.category === catF);
+    
+    if (filtered.length === 0) {
+        tbody.innerHTML = '';
+        empty.style.display = 'block';
+        return;
+    }
+    empty.style.display = 'none';
+    tbody.innerHTML = filtered.map(t => '<tr onclick="openTicket(' + t.id + ')"><td>' + t.number + '</td><td>' + t.title + '</td><td><span class="type-badge">' + typeLabel(t.type) + '</span></td><td>' + categoryLabel(t.category) + '</td><td><span class="status-badge ' + statusClass(t.status) + '">' + statusLabel(t.status) + '</span></td><td>' + (t.assignee || 'Не назначен') + '</td><td>' + formatDate(t.created) + '</td></tr>').join('');
+}
+
+function resetFilters() {
+    document.getElementById('searchInput').value = '';
+    document.getElementById('filterStatus').value = '';
+    document.getElementById('filterType').value = '';
+    document.getElementById('filterCategory').value = '';
+    renderTickets();
+}
+
+// Create Ticket
+function toggleContractor() {
+    document.getElementById('contractorGroup').style.display = document.getElementById('ticketCategory').value === 'client' ? 'block' : 'none';
+}
+
+function toggleOtherComment() {
+    document.getElementById('otherCommentGroup').style.display = document.getElementById('ticketType').value === 'other' ? 'block' : 'none';
+}
+
+document.getElementById('createTicketForm').addEventListener('submit', e => {
+    e.preventDefault();
+    const cat = document.getElementById('ticketCategory').value;
+    const title = document.getElementById('ticketTitle').value.trim();
+    const type = document.getElementById('ticketType').value;
+    const otherC = document.getElementById('ticketOtherComment').value.trim();
+    const desc = document.getElementById('ticketDescription').value.trim();
+    
+    if (type === 'other' && !otherC) { alert('Укажите комментарий для типа "Другое"'); return; }
+    
+    const ticket = {
+        id: Math.max(...appData.tickets.map(t=>t.id),0)+1,
+        number: genNumber(),
+        category: cat,
+        contractor: cat === 'client' ? document.getElementById('ticketContractor').value.trim() : '',
+        title, type, otherComment: otherC,
+        status: 'new', assignee: '', line: document.getElementById('ticketLine').value,
+        created: new Date().toISOString(),
+        description: desc, channel: '', pauseReason: '',
+        interactions: [],
+        audit: [{time: new Date().toISOString(), event:'created', details:'Заявка создана (' + categoryLabel(cat) + ', ' + typeLabel(type) + ')'}]
+    };
+    appData.tickets.push(ticket);
+    saveData(appData);
+    document.getElementById('createTicketForm').reset();
+    document.getElementById('contractorGroup').style.display = 'none';
+    document.getElementById('otherCommentGroup').style.display = 'none';
+    alert('Заявка создана!');
+    document.querySelector('[data-view="tickets"]').click();
+});
+
+// Modal functions
+function openTicket(id) {
+    currentTicketId = id;
+    const t = appData.tickets.find(x => x.id === id);
+    if (!t) return;
+    
+    document.getElementById('modalTitle').textContent = 'Заявка ' + t.number;
+    document.getElementById('ticketInfo').innerHTML = 
+        '<div class="info-row"><span class="info-label">Номер:</span><span class="info-value">'+t.number+'</span></div>'+
+        '<div class="info-row"><span class="info-label">Категория:</span><span class="info-value">'+categoryLabel(t.category)+'</span></div>'+
+        '<div class="info-row"><span class="info-label">Контрагент:</span><span class="info-value">'+(t.contractor||'-')+'</span></div>'+
+        '<div class="info-row"><span class="info-label">Тип:</span><span class="info-value">'+typeLabel(t.type)+(t.otherComment?' ('+t.otherComment+')':'')+'</span></div>'+
+        '<div class="info-row"><span class="info-label">Статус:</span><span class="info-value"><span class="status-badge '+statusClass(t.status)+'">'+statusLabel(t.status)+'</span></span></div>'+
+        '<div class="info-row"><span class="info-label">Исполнитель:</span><span class="info-value">'+(t.assignee||'Не назначен')+'</span></div>'+
+        '<div class="info-row"><span class="info-label">Линия:</span><span class="info-value">'+t.line+'</span></div>'+
+        '<div class="info-row"><span class="info-label">Создана:</span><span class="info-value">'+formatDate(t.created)+'</span></div>'+
+        '<div class="info-row"><span class="info-label">Описание:</span><span class="info-value">'+t.description+'</span></div>';
+    
+    renderInteractions(t);
+    renderAudit(t);
+    document.getElementById('statusSelect').value = t.status;
+    document.getElementById('assigneeSelect').value = t.assignee || '';
+    document.getElementById('lineSelect').value = t.line;
+    updateActionBlocks();
+    document.getElementById('ticketModal').classList.add('active');
+}
+
+function closeModal() {
+    document.getElementById('ticketModal').classList.remove('active');
+    currentTicketId = null;
+}
+
+function switchTab(btn) {
+    document.querySelectorAll('.tab').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    document.getElementById(btn.dataset.tab + 'Tab').classList.add('active');
+}
+
+function renderInteractions(t) {
+    const list = document.getElementById('interactionsList');
+    if (t.interactions.length === 0) { list.innerHTML = '<p style="color:#999;text-align:center;padding:1rem;">Нет взаимодействий</p>'; return; }
+    list.innerHTML = t.interactions.map(i => '<div class="interaction"><div class="interaction-author">'+i.author+'</div><div class="interaction-time">'+formatDate(i.time)+'</div><div class="interaction-text">'+i.text+'</div></div>').join('');
+}
+
+function renderAudit(t) {
+    const log = document.getElementById('auditLog');
+    if (t.audit.length === 0) { log.innerHTML = '<p style="color:#999;text-align:center;padding:1rem;">Нет записей</p>'; return; }
+    log.innerHTML = t.audit.map(e => '<div class="log-entry"><div class="log-time">'+formatDate(e.time)+'</div><div class="log-event">'+e.event+'</div><div class="log-details">'+e.details+'</div></div>').join('');
+}
+
+function updateActionBlocks() {
+    const s = document.getElementById('statusSelect').value;
+    document.getElementById('pauseBlock').classList.toggle('active', ['waiting_client','waiting_partner'].includes(s));
+    document.getElementById('channelBlock').style.display = s === 'resolved' ? 'block' : 'none';
+}
+
+function addInteraction() {
+    const text = document.getElementById('interactionText').value.trim();
+    if (!text) return;
+    const t = appData.tickets.find(x => x.id === currentTicketId);
+    if (!t) return;
+    t.interactions.push({author: {operator:'Оператор',engineer:'Инженер',lead:'Лид поддержки',auditor:'Аудитор',admin:'Администратор'}[appData.settings.currentRole], time: new Date().toISOString(), text});
+    t.audit.push({time: new Date().toISOString(), event:'comment_added', details:'Комментарий: '+text.substring(0,50)});
+    saveData(appData);
+    document.getElementById('interactionText').value = '';
+    renderInteractions(t);
+    renderAudit(t);
+}
+
+function changeStatus() {
+    const t = appData.tickets.find(x => x.id === currentTicketId);
+    if (!t) return;
+    const newStatus = document.getElementById('statusSelect').value;
+    
+    if (['waiting_client','waiting_partner'].includes(newStatus)) {
+        const reason = document.getElementById('pauseReason').value.trim();
+        if (!reason) { alert('Укажите причину паузы!'); return; }
+        t.pauseReason = reason;
+    } else { t.pauseReason = ''; }
+    
+    if (newStatus === 'resolved') {
+        const ch = document.getElementById('channelSelect').value;
+        if (!ch) { alert('Выберите канал решения!'); return; }
+        t.channel = ch;
+    }
+    
+    const old = t.status;
+    t.status = newStatus;
+    t.audit.push({time: new Date().toISOString(), event:'status_changed', details:'Статус: '+statusLabel(old)+' → '+statusLabel(newStatus)});
+    if (t.pauseReason) t.audit.push({time: new Date().toISOString(), event:'paused', details:'Пауза: '+t.pauseReason});
+    if (t.channel && newStatus==='resolved') {
+        const chNames = {remote:'Удалённо',phone:'Телефон',chat:'Переписка',onsite:'Выезд'};
+        t.audit.push({time: new Date().toISOString(), event:'channel_set', details:'Канал: '+chNames[t.channel]});
+    }
+    saveData(appData);
+    openTicket(currentTicketId);
+    alert('Статус изменён!');
+}
+
+function assignExecutor() {
+    const t = appData.tickets.find(x => x.id === currentTicketId);
+    if (!t) return;
+    const a = document.getElementById('assigneeSelect').value;
+    t.assignee = a;
+    t.audit.push({time: new Date().toISOString(), event:'assigned', details: a ? 'Исполнитель: '+a : 'Исполнитель снят'});
+    saveData(appData);
+    openTicket(currentTicketId);
+}
+
+function transferLine() {
+    const t = appData.tickets.find(x => x.id === currentTicketId);
+    if (!t) return;
+    const comment = document.getElementById('transferComment').value.trim();
+    if (!comment) { alert('Комментарий обязателен!'); return; }
+    const oldLine = t.line;
+    t.line = document.getElementById('lineSelect').value;
+    t.audit.push({time: new Date().toISOString(), event:'line_transferred', details:'Передано: '+oldLine+' → '+t.line+'. Комментарий: '+comment});
+    saveData(appData);
+    openTicket(currentTicketId);
+}
+
+// Integrations
+function showResult(data) {
+    document.getElementById('integrationResult').style.display = 'block';
+    document.getElementById('integrationResultContent').textContent = JSON.stringify(data, null, 2);
+}
+
+function simTelephony() {
+    showResult({call_id:'CALL-'+Date.now(),direction:'incoming',phone:'+7 (999) 000-00-00',client:'Иванов И.И. (синтетический)',duration:'00:03:45',recording:'[MOCK]',timestamp:new Date().toISOString()});
+}
+
+function simUSP() {
+    showResult({usp_id:'USP-2024-00123',customer:'ФКУ "Центр" (синтетический)',contract:'44-ФЗ №000000 (синтетический)',subject:'Запрос услуги',priority:'high',deadline:new Date(Date.now()+86400000).toISOString()});
+}
+
+function simAccounting() {
+    showResult({period:'Январь 2024',total_hours:156,billable:89,non_billable:67,tickets:45,avg_time:'2.1ч',note:'Данные синтетические'});
+}
+
+function simSSO() {
+    showResult({provider:'Mock SSO',user_id:'USR-001',username:'demo_user',email:'demo@example.com',roles:['operator','engineer'],authenticated:new Date().toISOString(),note:'Эмуляция'});
+}
+
+function simAnalytics() {
+    showResult({export_type:'events_json',generated:new Date().toISOString(),events_count:appData.tickets.reduce((s,t)=>s+t.audit.length,0),sample:appData.tickets.slice(0,2).map(t=>({number:t.number,events:t.audit.length}))});
+}
+
+function simTracker() {
+    showResult({tracker:'JIRA Mock',issue_id:'HELP-'+Math.floor(Math.random()*1000),summary:'HelpDesk task',created:new Date().toISOString(),url:'https://jira.mock/browse/HELP-XXX',note:'Эмуляция'});
+}
+
+// Init
+updateDashboard();
+</script></body></html>
