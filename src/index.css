@@ -1,0 +1,65 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Inter', system-ui, sans-serif;
+  background-color: #F6F8FC;
+  color: #111827;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+code {
+  font-family: 'JetBrains Mono', monospace;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #D7DEE9;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #C5CCD9;
+}
+
+/* Utility classes */
+.btn-primary {
+  @apply h-10 px-4 bg-primary text-white rounded-xl font-medium hover:bg-primaryHover transition-colors;
+}
+
+.btn-secondary {
+  @apply h-10 px-4 bg-white border border-border text-textPrimary rounded-xl font-medium hover:bg-muted transition-colors;
+}
+
+.btn-ghost {
+  @apply h-10 px-4 bg-transparent text-textSecondary rounded-xl font-medium hover:bg-muted transition-colors;
+}
+
+.input-base {
+  @apply h-10 px-3 bg-white border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all;
+}
+
+.card-base {
+  @apply bg-white rounded-2xl shadow-sm border border-border;
+}
+
+.badge-status {
+  @apply inline-flex items-center gap-1.5 h-7 px-3 rounded-pill text-[13px] font-semibold;
+}
